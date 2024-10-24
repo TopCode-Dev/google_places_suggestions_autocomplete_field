@@ -1,12 +1,9 @@
 library autocomplete_textfield;
 
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
-import '../models/place_response.dart';
 
 typedef AutoCompleteOverlayItemBuilder<T> = Widget Function(
     BuildContext context, T suggestion);

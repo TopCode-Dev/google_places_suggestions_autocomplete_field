@@ -4,16 +4,16 @@ library google_places_suggestions_autocomplete_field;
 
 import 'dart:async';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 import 'models/location_piece.dart';
 import 'models/place.dart';
+import 'models/place_response.dart';
 import 'models/point.dart';
 import 'services/google_api.dart';
 import 'widgets/auto_complete_text_field.dart';
-import 'models/place_response.dart';
-import 'package:collection/collection.dart';
 
 /// A StatefulWidget that provides an autocomplete text field
 /// with suggestions fetched from Google Places API.
@@ -212,7 +212,7 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
             "${postalCode.isNotEmpty ? "$postalCode, " : ""}";
 
         setState(() {
-          widget.controller.text = address ?? "";
+          widget.controller.text = address;
         });
 
         // Update the selected location object and trigger the callback.

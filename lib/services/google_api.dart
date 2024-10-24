@@ -48,7 +48,7 @@ class GoogleApi {
         response.statusCode == 203 ||
         response.statusCode == 204) {
       return PlacesPredictions.fromJson(json.decode(response.body));
-    } else if (response.body != null) {
+    } else if (response.body.isNotEmpty) {
       throw Exception(response.body);
     } else {
       throw Exception('${response.toString()}');
