@@ -13,7 +13,9 @@ import 'models/place.dart';
 import 'models/place_response.dart';
 import 'models/point.dart';
 import 'services/google_api.dart';
-import 'widgets/auto_complete_text_field.dart';
+
+const Duration fakeAPIDuration = Duration(seconds: 1);
+const Duration debounceDuration = Duration(milliseconds: 500);
 
 /// A StatefulWidget that provides an autocomplete text field
 /// with suggestions fetched from Google Places API.
@@ -72,9 +74,6 @@ class GooglePlacesSuggestionsAutoCompleteField extends StatefulWidget {
 
 class _GooglePlacesSuggestionsAutoCompleteFieldState
     extends State<GooglePlacesSuggestionsAutoCompleteField> {
-  /// StreamController to handle the suggestion list updates.
-  StreamController<List<PlaceResponse>> placeSuggestionController =
-  StreamController<List<PlaceResponse>>();
 
   /// Holds the selected location from the suggestions.
   Place? pickUpLocation;
@@ -88,61 +87,90 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
   /// Google API handler for fetching place details and autocomplete suggestions.
   late GoogleApi _googleApi;
 
-  /// Key used for the autocomplete text field.
-  GlobalObjectKey<AutoCompleteTextFieldState<PlaceResponse>> pickUpPlaceKey =
-  const GlobalObjectKey("__pickUpPlaceKey__");
+
+  // The query currently being searched for. If null, there is no pending
+  // request.
+  String? _currentQuery;
+
+  // The most recent options received from the API.
+  late List<PlaceResponse> _lastOptions = [];
+
+  late final _Debounceable<List<PlaceResponse>?, String> _debouncedSearch;
+  // A network error was received on the most recent query.
+  bool _networkError = false;
 
   @override
   void initState() {
     super.initState();
+    _debouncedSearch = _debounce<List<PlaceResponse>?, String>(_search);
     _googleApi = GoogleApi(widget.googleAPIKey);
     init();
   }
+
+  static String _displayStringForOption(PlaceResponse option) => option.description ?? "";
 
   /// Builds the widget for the Google Places Autocomplete text field
   /// and suggestion dropdown.
   @override
   Widget build(BuildContext context) {
-    return getCustomAutoCompleteTextField(
-      controller: widget.controller,
-      hint: widget.hint,
-      key: pickUpPlaceKey,
-      decoration: widget.decoration,
-      suggestionBackgroundColor: widget.suggestionBackgroundColor,
-      suggestionDividerColor: widget.suggestionDividerColor,
-      itemBuilder: (context, placeResponse) {
-        return Container(
-          color: widget.suggestionBackgroundColor,
-          child: Text(
-            placeResponse.description,
-            style: widget.suggestionTextStyle ??
-                TextStyle(fontSize: 16, fontWeight: FontWeight.w400, color: Colors.black87),
+    return Autocomplete<PlaceResponse>(
+      displayStringForOption: _displayStringForOption,
+      fieldViewBuilder: (BuildContext context,
+          TextEditingController controller,
+          FocusNode focusNode,
+          VoidCallback onFieldSubmitted) {
+        return TextFormField(
+          decoration: widget.decoration != null ? widget.decoration?.copyWith(
+              errorText: _networkError ? 'Network error, please try again.' : null,)
+          : InputDecoration(
+            hintText:  widget.hint,
+            labelText: widget.hint,
+            icon: Icon(
+              Icons.location_on,
+              color: Color(0xffcc2f25),
+            ),
+            contentPadding: EdgeInsets.symmetric(
+                horizontal: 16, vertical: 4),
+            border: OutlineInputBorder(
+              borderSide: BorderSide(
+                color: Colors.grey.withOpacity(0.7),
+                width: 2.0,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderSide: BorderSide(
+                color: Colors.grey.withOpacity(0.7),
+                width: 2.0,
+              ),
+            ),
           ),
+          controller: controller,
+          focusNode: focusNode,
+          onFieldSubmitted: (String value) {
+            onFieldSubmitted();
+          },
         );
       },
-      placeSuggestionController: placeSuggestionController,
-      onItemSubmitted: (placeSelected) async {
-
-        onPickUpLocationSelectionChange(placeSelected);
-        pickUpPlaceKey.currentState?.updateSuggestions([]);
-        FocusScope.of(context).unfocus();
-      },
-      itemFilter: (suggestion, input) {
-        return true;
-      },
-      onTextChange: (input) {
-        if (input.length > 2) {
-          updateLocationPredictions(input);
-        } else {
-          pickUpPlaceKey.currentState?.updateSuggestions([]);
+      optionsBuilder: (TextEditingValue textEditingValue) async {
+        setState(() {
+          _networkError = false;
+        });
+        final List<PlaceResponse>? options = await _debouncedSearch(textEditingValue.text);
+        if (options == null) {
+          return _lastOptions;
         }
+        _lastOptions = options;
+        return options;
+      },
+      onSelected: (PlaceResponse selection) {
+        onPickUpLocationSelectionChange(selection);
+        debugPrint('You just selected ${selection.description}');
       },
     );
   }
 
   /// Initializes the Google API session token and suggestion controller.
   void init() {
-    placeSuggestionController.add([]);
     pickUpDateSessionToken = Uuid().v4().toString();
   }
 
@@ -225,6 +253,8 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
           province: province,
           suburb: suburb,
           country: country,
+          streetAddress: streetAddress,
+          streetNumber: streetNumber
         );
         setState(() {
           this.selectedLocation = selectedLocation;
@@ -238,87 +268,95 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
   }
 
   /// Updates the suggestion list by fetching predictions from Google Places API.
-  void updateLocationPredictions(String input) {
+  Future<List<PlaceResponse>?> _search(String query) async {
+    _currentQuery = query;
+
+    late final List<PlaceResponse>? options;
     try {
-      placeSuggestionController.add([]);
-    } catch (e) {
-      debugPrint(e.toString());
+      options = await _googleApi
+          .getAutoCompletePlaces2(
+        input: _currentQuery,
+        sessionToken: pickUpDateSessionToken,
+        countries: widget.countries,
+        types: widget.locationType,
+      );
+    } catch (error) {
+      if (error is _NetworkException) {
+        setState(() {
+          _networkError = true;
+        });
+        return null;
+      }
+      rethrow;
     }
-    _googleApi
-        .getAutoCompletePlaces(
-      input: input,
-      sessionToken: pickUpDateSessionToken,
-      countries: widget.countries,
-      types: widget.locationType,
-    )
-        .then((placesPredictions) {
-      setState(() {
-        placeSuggestionController.add(placesPredictions.predictions ?? []);
-      });
-    }).catchError((error, trace) {
-      debugPrint(error.toString());
-      debugPrintStack(stackTrace: trace, label: "Google getAutoCompletePlaces");
-    });
+
+    // If another search happened after this one, throw away these options.
+    if (_currentQuery != query) {
+      return null;
+    }
+    _currentQuery = null;
+
+    return options;
   }
 
-  Widget getCustomAutoCompleteTextField(
-      {String hint = "Location",
-        itemBuilder,
-        required Function(PlaceResponse) onItemSubmitted,
-        GlobalObjectKey<AutoCompleteTextFieldState<PlaceResponse>>? key,
-        itemFilter,
-        controller,
-        onTextChange,
-        placeSuggestionController,
-        InputDecoration? decoration,
-        required Color suggestionBackgroundColor,
-        required Color suggestionDividerColor,
-      }) {
-    return IntrinsicHeight(
-      child: AutoCompleteTextField<PlaceResponse>(
+}
 
-        clearOnSubmit: false,
-        submitOnSuggestionTap: true,
-        onFocusChanged: (val) {
-          if (!val) {
-            //key?.currentState?.updateSuggestions([]);
-          }
-        },
-        controller: controller,
-        keyboardType: TextInputType.text,
-        decoration: decoration?? InputDecoration(
-          hintText:  hint,
-          labelText: hint,
-          icon: Icon(
-            Icons.location_on,
-            color: Color(0xffcc2f25),
-          ),
-          contentPadding: EdgeInsets.symmetric(
-              horizontal: 16, vertical: 4),
-          border: OutlineInputBorder(
-            borderSide: BorderSide(
-              color: Colors.grey.withOpacity(0.7),
-              width: 2.0,
-            ),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderSide: BorderSide(
-              color: Colors.grey.withOpacity(0.7),
-              width: 2.0,
-            ),
-          ),
-        ),
-        placeSuggestionController: placeSuggestionController,
-        itemBuilder: itemBuilder,
-        itemSorter: (a, b) => 1,
-        itemFilter: itemFilter,
-        itemSubmitted: onItemSubmitted,
-        textChanged: onTextChange,
-        key: key,
-        suggestionBackgroundColor: suggestionBackgroundColor,
-        suggestionDividerColor: suggestionDividerColor,
-      ),
-    );
+
+typedef _Debounceable<S, T> = Future<S?> Function(T parameter);
+
+/// Returns a new function that is a debounced version of the given function.
+///
+/// This means that the original function will be called only after no calls
+/// have been made for the given Duration.
+_Debounceable<S, T> _debounce<S, T>(_Debounceable<S?, T> function) {
+  _DebounceTimer? debounceTimer;
+
+  return (T parameter) async {
+    if (debounceTimer != null && !debounceTimer!.isCompleted) {
+      debounceTimer!.cancel();
+    }
+    debounceTimer = _DebounceTimer();
+    try {
+      await debounceTimer!.future;
+    } catch (error) {
+      if (error is _CancelException) {
+        return null;
+      }
+      rethrow;
+    }
+    return function(parameter);
+  };
+}
+
+// A wrapper around Timer used for debouncing.
+class _DebounceTimer {
+  _DebounceTimer() {
+    _timer = Timer(debounceDuration, _onComplete);
   }
 
+  late final Timer _timer;
+  final Completer<void> _completer = Completer<void>();
+
+  void _onComplete() {
+    _completer.complete();
+  }
+
+  Future<void> get future => _completer.future;
+
+  bool get isCompleted => _completer.isCompleted;
+
+  void cancel() {
+    _timer.cancel();
+    _completer.completeError(const _CancelException());
+  }
+}
+
+// An exception indicating that the timer was canceled.
+class _CancelException implements Exception {
+  const _CancelException();
+}
+
+// An exception indicating that a network request has failed.
+class _NetworkException implements Exception {
+  const _NetworkException();
 }

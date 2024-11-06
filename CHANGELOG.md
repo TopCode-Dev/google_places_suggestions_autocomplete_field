@@ -1,3 +1,9 @@
+
+## 0.0.2
+
+- Added fix for auto complete on-selection errors.
+- Changed auto complete text field to use the native flutter package
+
 ## 0.0.1
 
 * Initial release of google_places_suggestions_autocomplete_field package. 

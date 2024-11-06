@@ -43,7 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: GooglePlacesSuggestionsAutoCompleteField(
               controller: TextEditingController(),
               googleAPIKey: "xyz",/// Replace with your Google Places API Key
-              countries: "za",
+              countries: "za,de", ///The countries for the predictions.
               onPlaceSelected: (place) {
                 setState(() {
                   resultObject = jsonEncode(place.toJson());

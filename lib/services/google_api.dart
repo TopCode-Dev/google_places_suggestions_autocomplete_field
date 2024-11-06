@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/place_details_results.dart';
 import '../models/place_predictions.dart';
+import '../models/place_response.dart';
 
 class GoogleApi {
   static const TAG = 'GoogleApi';
@@ -24,7 +25,7 @@ class GoogleApi {
     return result;
   }
 
-  Future<PlacesPredictions> getAutoCompletePlaces(
+  Future<List<PlaceResponse>?> getAutoCompletePlaces(
       {String? sessionToken,
         String? input,
         required String types,
@@ -47,7 +48,7 @@ class GoogleApi {
         response.statusCode == 201 ||
         response.statusCode == 203 ||
         response.statusCode == 204) {
-      return PlacesPredictions.fromJson(json.decode(response.body));
+      return PlacesPredictions.fromJson(json.decode(response.body)).predictions ?? [];
     } else if (response.body.isNotEmpty) {
       throw Exception(response.body);
     } else {
