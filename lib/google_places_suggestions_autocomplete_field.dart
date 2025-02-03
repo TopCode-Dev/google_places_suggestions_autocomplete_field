@@ -274,7 +274,7 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
     late final List<PlaceResponse>? options;
     try {
       options = await _googleApi
-          .getAutoCompletePlaces2(
+          .getAutoCompletePlaces(
         input: _currentQuery,
         sessionToken: pickUpDateSessionToken,
         countries: widget.countries,
