@@ -24,6 +24,9 @@ class GooglePlacesSuggestionsAutoCompleteField extends StatefulWidget {
   /// Controller for managing the text field input.
   final TextEditingController controller;
 
+  /// Focus node to allow external keyboards to control focus behavior.
+  final FocusNode? focusNode;
+
   /// Hint text to be shown in the text field.
   final String hint;
 
@@ -56,6 +59,7 @@ class GooglePlacesSuggestionsAutoCompleteField extends StatefulWidget {
   const GooglePlacesSuggestionsAutoCompleteField({
     super.key,
     required this.controller,
+    this.focusNode,
     this.hint = "Address",
     this.decoration,
     this.suggestionBackgroundColor = Colors.white,
@@ -74,6 +78,8 @@ class GooglePlacesSuggestionsAutoCompleteField extends StatefulWidget {
 
 class _GooglePlacesSuggestionsAutoCompleteFieldState
     extends State<GooglePlacesSuggestionsAutoCompleteField> {
+
+  late final FocusNode _focusNode;
 
   /// Holds the selected location from the suggestions.
   Place? pickUpLocation;
@@ -102,9 +108,23 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
   @override
   void initState() {
     super.initState();
+    _focusNode = widget.focusNode ?? FocusNode();
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus) {
+        debugPrint("GooglePlacesSuggestionsAutoCompleteField focused");
+      }
+    });
     _debouncedSearch = _debounce<List<PlaceResponse>?, String>(_search);
     _googleApi = GoogleApi(widget.googleAPIKey);
     init();
+  }
+
+  @override
+  void dispose() {
+    if (widget.focusNode == null) {
+      _focusNode.dispose();
+    }
+    super.dispose();
   }
 
   static String _displayStringForOption(PlaceResponse option) => option.description ?? "";
@@ -145,7 +165,7 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
             ),
           ),
           controller: controller,
-          focusNode: focusNode,
+          focusNode: _focusNode,
           onFieldSubmitted: (String value) {
             onFieldSubmitted();
           },
@@ -274,7 +294,7 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
     late final List<PlaceResponse>? options;
     try {
       options = await _googleApi
-          .getAutoCompletePlaces2(
+          .getAutoCompletePlaces(
         input: _currentQuery,
         sessionToken: pickUpDateSessionToken,
         countries: widget.countries,
