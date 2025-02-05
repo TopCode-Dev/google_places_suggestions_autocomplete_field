@@ -51,6 +51,9 @@ class GooglePlacesSuggestionsAutoCompleteField extends StatefulWidget {
   /// A comma-separated list of country codes to restrict the search results.
   final String countries;
 
+  /// Allow injecting a custom keyboard if provided.
+  final VoidCallback? onTapField;
+
   /// Constructor for GooglePlacesSuggestionsAutoCompleteField.
   /// Takes required parameters for [controller], [googleAPIKey], and [onPlaceSelected].
   const GooglePlacesSuggestionsAutoCompleteField({
@@ -65,6 +68,7 @@ class GooglePlacesSuggestionsAutoCompleteField extends StatefulWidget {
     required this.onPlaceSelected,
     this.locationType = "address",
     this.countries = "za",
+    this.onTapField,
   });
 
   @override
@@ -115,6 +119,7 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
   Widget build(BuildContext context) {
     return Autocomplete<PlaceResponse>(
       displayStringForOption: _displayStringForOption,
+      initialValue: widget.controller.value,
       fieldViewBuilder: (BuildContext context,
           TextEditingController controller,
           FocusNode focusNode,
@@ -149,12 +154,18 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
           onFieldSubmitted: (String value) {
             onFieldSubmitted();
           },
+          onTap: () {
+            if (widget.onTapField != null) {
+              widget.onTapField!();
+            }
+          },
         );
       },
       optionsBuilder: (TextEditingValue textEditingValue) async {
         setState(() {
           _networkError = false;
         });
+        debugPrint("controller string${widget.controller.text}");
         final List<PlaceResponse>? options = await _debouncedSearch(textEditingValue.text);
         if (options == null) {
           return _lastOptions;
@@ -164,6 +175,7 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
       },
       onSelected: (PlaceResponse selection) {
         onPickUpLocationSelectionChange(selection);
+        widget.controller.text = selection.description ?? "";
         debugPrint('You just selected ${selection.description}');
       },
     );
@@ -274,7 +286,7 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
     late final List<PlaceResponse>? options;
     try {
       options = await _googleApi
-          .getAutoCompletePlaces2(
+          .getAutoCompletePlaces(
         input: _currentQuery,
         sessionToken: pickUpDateSessionToken,
         countries: widget.countries,
