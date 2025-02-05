@@ -24,9 +24,6 @@ class GooglePlacesSuggestionsAutoCompleteField extends StatefulWidget {
   /// Controller for managing the text field input.
   final TextEditingController controller;
 
-  /// Focus node to allow external keyboards to control focus behavior.
-  final FocusNode? focusNode;
-
   /// Hint text to be shown in the text field.
   final String hint;
 
@@ -54,12 +51,14 @@ class GooglePlacesSuggestionsAutoCompleteField extends StatefulWidget {
   /// A comma-separated list of country codes to restrict the search results.
   final String countries;
 
+  /// Allow injecting a custom keyboard if provided.
+  final VoidCallback? onTapField;
+
   /// Constructor for GooglePlacesSuggestionsAutoCompleteField.
   /// Takes required parameters for [controller], [googleAPIKey], and [onPlaceSelected].
   const GooglePlacesSuggestionsAutoCompleteField({
     super.key,
     required this.controller,
-    this.focusNode,
     this.hint = "Address",
     this.decoration,
     this.suggestionBackgroundColor = Colors.white,
@@ -69,6 +68,7 @@ class GooglePlacesSuggestionsAutoCompleteField extends StatefulWidget {
     required this.onPlaceSelected,
     this.locationType = "address",
     this.countries = "za",
+    this.onTapField,
   });
 
   @override
@@ -78,8 +78,6 @@ class GooglePlacesSuggestionsAutoCompleteField extends StatefulWidget {
 
 class _GooglePlacesSuggestionsAutoCompleteFieldState
     extends State<GooglePlacesSuggestionsAutoCompleteField> {
-
-  late final FocusNode _focusNode;
 
   /// Holds the selected location from the suggestions.
   Place? pickUpLocation;
@@ -108,23 +106,9 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
   @override
   void initState() {
     super.initState();
-    _focusNode = widget.focusNode ?? FocusNode();
-    _focusNode.addListener(() {
-      if (_focusNode.hasFocus) {
-        debugPrint("GooglePlacesSuggestionsAutoCompleteField focused");
-      }
-    });
     _debouncedSearch = _debounce<List<PlaceResponse>?, String>(_search);
     _googleApi = GoogleApi(widget.googleAPIKey);
     init();
-  }
-
-  @override
-  void dispose() {
-    if (widget.focusNode == null) {
-      _focusNode.dispose();
-    }
-    super.dispose();
   }
 
   static String _displayStringForOption(PlaceResponse option) => option.description ?? "";
@@ -135,6 +119,7 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
   Widget build(BuildContext context) {
     return Autocomplete<PlaceResponse>(
       displayStringForOption: _displayStringForOption,
+      initialValue: widget.controller.value,
       fieldViewBuilder: (BuildContext context,
           TextEditingController controller,
           FocusNode focusNode,
@@ -165,9 +150,14 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
             ),
           ),
           controller: controller,
-          focusNode: _focusNode,
+          focusNode: focusNode,
           onFieldSubmitted: (String value) {
             onFieldSubmitted();
+          },
+          onTap: () {
+            if (widget.onTapField != null) {
+              widget.onTapField!();
+            }
           },
         );
       },
@@ -175,6 +165,7 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
         setState(() {
           _networkError = false;
         });
+        debugPrint("controller string${widget.controller.text}");
         final List<PlaceResponse>? options = await _debouncedSearch(textEditingValue.text);
         if (options == null) {
           return _lastOptions;
@@ -184,6 +175,7 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
       },
       onSelected: (PlaceResponse selection) {
         onPickUpLocationSelectionChange(selection);
+        widget.controller.text = selection.description ?? "";
         debugPrint('You just selected ${selection.description}');
       },
     );
