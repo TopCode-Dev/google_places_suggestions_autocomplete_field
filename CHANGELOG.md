@@ -1,3 +1,7 @@
+## 0.0.3
+
+- Added default text to the autocomplete widget from the passed controller
+- Added an OnTap Callback
 
 ## 0.0.2
 

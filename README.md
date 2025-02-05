@@ -166,4 +166,4 @@ To use this package, you will need to set up a Google API key:
 
 ### Example Output
 
-When a user selects a place from the suggestions, the onPlaceSelected callback will return a Place object with the detailed information like:
+When a user selects a place from the suggestions, the onPlaceSelected callback will return a Place object with the detailed information
