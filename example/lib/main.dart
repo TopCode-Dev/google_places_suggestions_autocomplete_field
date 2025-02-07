@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:google_places_suggestions_autocomplete_field/google_places_suggestions_autocomplete_field.dart';
+import 'keyboard_manager.dart';
 
 void main() {
   runApp(const MyApp());
@@ -31,6 +32,12 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String? resultObject;
+  TextEditingController _textController = TextEditingController();
+  @override
+  void initState() {
+    super.initState();
+    KeyboardManager().init(context);
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -41,7 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
             height: 50,
             width: 400,
             child: GooglePlacesSuggestionsAutoCompleteField(
-              controller: TextEditingController(),
+              controller: _textController,
               googleAPIKey: "xyz",/// Replace with your Google Places API Key
               countries: "za,de", ///The countries for the predictions.
               onPlaceSelected: (place) {
@@ -49,6 +56,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   resultObject = jsonEncode(place.toJson());
                 });
                 debugPrint("place: ${jsonEncode(place.toJson())}");
+              },
+              onTapField: (controller, focusNode) {
+                debugPrint("_textController: ${_textController}");
+                debugPrint("Keyboard should pop up");
+                KeyboardManager().focusTextField(controller, focusNode);
               },
             ),
           ),

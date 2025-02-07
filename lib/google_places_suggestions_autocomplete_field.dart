@@ -52,7 +52,7 @@ class GooglePlacesSuggestionsAutoCompleteField extends StatefulWidget {
   final String countries;
 
   /// Allow injecting a custom keyboard if provided.
-  final VoidCallback? onTapField;
+  final void Function(TextEditingController, FocusNode)? onTapField;
 
   /// Constructor for GooglePlacesSuggestionsAutoCompleteField.
   /// Takes required parameters for [controller], [googleAPIKey], and [onPlaceSelected].
@@ -156,7 +156,9 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
           },
           onTap: () {
             if (widget.onTapField != null) {
-              widget.onTapField!();
+              debugPrint("focus node: ${focusNode}");
+              FocusScope.of(context).requestFocus(focusNode);
+              widget.onTapField!(controller, focusNode);
             }
           },
         );
@@ -166,7 +168,9 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
           _networkError = false;
         });
         debugPrint("controller string${widget.controller.text}");
+        debugPrint("text: ${textEditingValue}");
         final List<PlaceResponse>? options = await _debouncedSearch(textEditingValue.text);
+        debugPrint("Options: ${options}");
         if (options == null) {
           return _lastOptions;
         }
@@ -281,6 +285,7 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
 
   /// Updates the suggestion list by fetching predictions from Google Places API.
   Future<List<PlaceResponse>?> _search(String query) async {
+    debugPrint("Query: ${query}");
     _currentQuery = query;
 
     late final List<PlaceResponse>? options;
