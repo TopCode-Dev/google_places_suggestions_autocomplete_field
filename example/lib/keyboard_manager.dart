@@ -6,6 +6,7 @@ class KeyboardManager extends ChangeNotifier {
   OverlayEntry? _keyboardOverlay;
   bool _isShiftActive = false;
   TextEditingController? _activeController;
+  TextEditingController? _textController;
   FocusNode? _focusNode;
   BuildContext? _context;
   bool showVirtualKeyboard = true;
@@ -18,72 +19,89 @@ class KeyboardManager extends ChangeNotifier {
 
   void init(BuildContext context) {
     _context = context;
+    _focusNode = FocusNode();
+    _focusNode!.addListener(() {
+    });
+  }
+
+  void _focusListener() {
+    if (_focusNode == null) return;
+
+    // Prevent unnecessary refocus
+    if (!_focusNode!.hasFocus) {
+
+      // If keyboard is closed, do NOT restore focus
+      if (_keyboardOverlay == null) {
+        return;
+      }
+
+      // Allow normal focus behavior when tapping inside field
+      Future.delayed(Duration(milliseconds: 100), () {
+        if (_activeController != null && !_focusNode!.hasFocus) {
+        }
+      });
+    }
   }
 
   void focusTextField(TextEditingController controller, FocusNode focusNode) {
-    debugPrint("Focusing on controller: ${controller}");
 
     _activeController = controller;
-    _focusNode = focusNode;
+    _textController = controller;
 
-    // Ensure selection is valid
-    TextSelection existingSelection = controller.selection;
-    debugPrint(" existing selection: ${existingSelection}");
-    if (!existingSelection.isValid || existingSelection.baseOffset < 0) {
-      existingSelection = TextSelection.collapsed(offset: controller.text.length);
+    if (_focusNode != focusNode) {
+      _focusNode?.removeListener(_focusListener); // Remove old listener
+      _focusNode = focusNode;
+      _focusNode!.addListener(_focusListener); // Reattach listener
     }
-
-    // Request focus AND restore selection immediately
-   /* _focusNode!.requestFocus();*/
-    debugPrint("focus1: ${_focusNode?.hasFocus}");
-    if (_focusNode != null && !_focusNode!.hasFocus) {
-      FocusScope.of(_context!).requestFocus(_focusNode);
-    }
-    debugPrint("focus2: ${_focusNode?.hasFocus}");
-    controller.selection = existingSelection;
-    debugPrint("Focus requested on ${controller}, Cursor restored at: ${controller.selection.start}");
-
     if (showVirtualKeyboard) {
       _showKeyboardOverlay();
+    }
+
+    // Requesting focus on the text field
+    if (!_focusNode!.hasFocus) {
+      debugPrint("Restoring focus immediately.");
+      FocusScope.of(_context!).requestFocus(_focusNode);
     }
   }
 
   void unfocusTextField() {
     _removeKeyboardOverlay();
+    if (_focusNode != null) {
+      _focusNode!.removeListener(_focusListener);
+      _focusNode!.unfocus();
+    }
     _activeController = null;
+    _textController = null;
   }
 
   void _showKeyboardOverlay() {
-    _removeKeyboardOverlay();
-    if (_focusNode != null && !_focusNode!.hasFocus) {
-      FocusScope.of(_context!).requestFocus(_focusNode);
-    }
-    debugPrint("focus5: ${_focusNode?.hasFocus}");
+    if (_keyboardOverlay != null && Overlay.of(_context!)?.mounted == true) return;
+
     _keyboardOverlay = OverlayEntry(
-      builder: (context) => Positioned(
-        bottom: 0,
-        left: 0,
-        right: 0,
-        child: Material(
-          color: Colors.blueGrey,
-            child : Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: IconButton(
-                    icon: Icon(Icons.close, color: Colors.black, size: 28),
-                    onPressed: () {
-                      _removeKeyboardOverlay();
-                    },
-                    padding: EdgeInsets.all(12),
-                    constraints: BoxConstraints(),
-                    splashRadius: 28,
+        builder: (context) => Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: Material(
+            color: Colors.blueGrey,
+            child : FocusScope(
+              canRequestFocus: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      icon: Icon(Icons.close, color: Colors.black, size: 28),
+                      onPressed: () {
+                        _removeKeyboardOverlay();
+                      },
+                      padding: EdgeInsets.all(12),
+                      constraints: BoxConstraints(),
+                      splashRadius: 28,
+                    ),
                   ),
-                ),
-                Focus(
-                  canRequestFocus: false,
-                  child: CustomKeyboard(
+                  CustomKeyboard(
                     focusNode: _focusNode,
                     controller: _activeController!,
                     onKeyTap: (key) => _handleCustomKeyPress(key),
@@ -91,87 +109,73 @@ class KeyboardManager extends ChangeNotifier {
                     onShiftToggle: _toggleShift,
                     isShiftActive: _isShiftActive,
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-        ),
-      )
+          ),
+        )
     );
-    Overlay.of(_context!).insert(_keyboardOverlay!);
-    if (_focusNode != null && !_focusNode!.hasFocus) {
-      FocusScope.of(_context!).requestFocus(_focusNode);
-    }
-    debugPrint("focus6: ${_focusNode?.hasFocus}");
+      Overlay.of(_context!).insert(_keyboardOverlay!);
   }
 
   void _removeKeyboardOverlay() {
     if (_keyboardOverlay != null) {
       _keyboardOverlay!.remove();
       _keyboardOverlay = null;
-       notifyListeners();
+    }
+    if (_focusNode != null) {
+      _focusNode!.unfocus();
     }
   }
 
   void _handleCustomKeyPress(String key) {
-    debugPrint("focus3: ${_focusNode?.hasFocus}");
-    if (_activeController != null) {
-      final controller = _activeController!;
-      String text = controller.text;
-      TextSelection selection = controller.selection;
-
-      int cursorPos = selection.baseOffset;
-
-      // Ensure cursor is within bounds
-      if (cursorPos < 0 || cursorPos > text.length) {
-        cursorPos = text.length;
+    if (_focusNode != null && _activeController != null) {
+      if (!_focusNode!.hasFocus) {
+        FocusScope.of(_context!).requestFocus(_focusNode);
       }
 
-      debugPrint("Cursor Position Before Insertion: $cursorPos, Text Length: ${text.length}");
+      final controller = _activeController!;
+      String text = controller.text;
 
+      // Always move the cursor to the end before inserting
+      int cursorPos = text.length;
       String newKey = _isShiftActive ? key.toUpperCase() : key;
-      String newText = text.substring(0, cursorPos) + newKey + text.substring(cursorPos);
-
-      int newCursorPos = cursorPos + 1; // Move cursor forward after inserting
+      String newText = text + newKey; // Append at the end
 
       controller.value = TextEditingValue(
         text: newText,
-        selection: TextSelection.collapsed(offset: newCursorPos),
+        selection: TextSelection.collapsed(offset: newText.length), // Move cursor to end
       );
-
-      debugPrint("Inserted: '$newKey' at position $cursorPos, New Cursor Position: $newCursorPos");
-      debugPrint("focus4: ${_focusNode?.hasFocus}");
-
-      // Ensure keyboard suggestions show up by keeping focus active
-      /*if (_focusNode != null && !_focusNode!.hasFocus) {
-        FocusScope.of(_context!).requestFocus(_focusNode);
-*//*
-*//*
-      }*/
     }
   }
 
   void _handleBackspace() {
-    if (_activeController != null) {
+    if (_focusNode != null && _activeController != null) {
+      if (!_focusNode!.hasFocus) {
+        FocusScope.of(_context!).requestFocus(_focusNode);
+      }
       final controller = _activeController!;
-      final text = controller.text;
-      final selection = controller.selection;
-      final cursorPos = selection.start;
+      String text = controller.text;
 
-      if (cursorPos > 0) {
-        final newText = text.substring(0, cursorPos - 1) + text.substring(cursorPos);
-        int newCursorPos = cursorPos - 1;
+      if (text.isNotEmpty) {
+        // Always delete the last character (ensuring we operate at the end)
+        String newText = text.substring(0, text.length - 1);
 
         controller.value = TextEditingValue(
           text: newText,
-          selection: TextSelection.collapsed(offset: newCursorPos),
+          selection: TextSelection.collapsed(offset: newText.length), // Keep cursor at the end
         );
 
-        debugPrint("Backspace at position $cursorPos, New Cursor Position: $newCursorPos");
+        if (newText.isEmpty) {
+          controller.clear();
+          notifyListeners();
+        }
 
-      /*  // Keep focus on the text field for keyboard suggestions
-        if (_focusNode != null && !_focusNode!.hasFocus) {
-          FocusScope.of(_context!).requestFocus(_focusNode);
-        }*/
+        // Ensuring widget.controller is also updated
+        if (_textController != null) {
+          _textController!.text = newText;
+          _textController!.selection = TextSelection.collapsed(offset: newText.length);
+        }
       }
     }
   }
@@ -179,6 +183,10 @@ class KeyboardManager extends ChangeNotifier {
   void _toggleShift() {
     _isShiftActive = !_isShiftActive;
     notifyListeners();
+
+    if (_focusNode != null && !_focusNode!.hasFocus) {
+      FocusScope.of(_context!).requestFocus(_focusNode);
+    }
   }
 
   bool get isShiftActive => _isShiftActive;

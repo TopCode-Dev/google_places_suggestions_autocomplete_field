@@ -33,42 +33,52 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   String? resultObject;
   TextEditingController _textController = TextEditingController();
+  final KeyboardManager _keyboardManager = KeyboardManager();
+
   @override
   void initState() {
     super.initState();
-    KeyboardManager().init(context);
+    _keyboardManager.init(context);
   }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Column(
-        children: [
-          Container(
-            margin: EdgeInsets.symmetric(vertical: 100, horizontal: 100),
-            height: 50,
-            width: 400,
-            child: GooglePlacesSuggestionsAutoCompleteField(
-              controller: _textController,
-              googleAPIKey: "xyz",/// Replace with your Google Places API Key
-              countries: "za,de", ///The countries for the predictions.
-              onPlaceSelected: (place) {
-                setState(() {
-                  resultObject = jsonEncode(place.toJson());
-                });
-                debugPrint("place: ${jsonEncode(place.toJson())}");
-              },
-              onTapField: (controller, focusNode) {
-                debugPrint("_textController: ${_textController}");
-                debugPrint("Keyboard should pop up");
-                KeyboardManager().focusTextField(controller, focusNode);
-              },
-            ),
-          ),
-          resultObject != null ? Container(
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () {
+        if (_keyboardManager.showVirtualKeyboard) {
+        }
+      },
+      child: Scaffold(
+        body: Column(
+          children: [
+            Container(
               margin: EdgeInsets.symmetric(vertical: 100, horizontal: 100),
-              child: Text("Returned Location: $resultObject")
-          ) : Container()
-        ],
+              height: 50,
+              width: 400,
+              child: GooglePlacesSuggestionsAutoCompleteField(
+                controller: _textController,
+                googleAPIKey: "xyz",/// Replace with your Google Places API Key
+                countries: "za,de", ///The countries for the predictions.
+                onPlaceSelected: (place) {
+                  setState(() {
+                    resultObject = jsonEncode(place.toJson());
+                  });
+                  debugPrint("place: ${jsonEncode(place.toJson())}");
+                },
+                /// Uncomment below onTap if you want to test with built in soft keyboard.
+              /* onTapField: (controller, focusNode) {
+                  _keyboardManager.focusTextField(controller, focusNode);
+                },*/
+
+              ),
+            ),
+            resultObject != null ? Container(
+                margin: EdgeInsets.symmetric(vertical: 100, horizontal: 100),
+                child: Text("Returned Location: $resultObject")
+            ) : Container(),
+          ],
+        ),
       ),
     );
   }

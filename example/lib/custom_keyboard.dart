@@ -22,64 +22,10 @@ class CustomKeyboard extends StatefulWidget {
 }
 
 class _CustomKeyboardState extends State<CustomKeyboard> {
-  final List<String> _topRow = [
-    '1',
-    '2',
-    '3',
-    '4',
-    '5',
-    '6',
-    '7',
-    '8',
-    '9',
-    '0',
-    '-',
-    '=',
-    '@',
-    '#'
-  ];
-  final List<String> _qwertyRow = [
-    'q',
-    'w',
-    'e',
-    'r',
-    't',
-    'y',
-    'u',
-    'i',
-    'o',
-    'p',
-    '[',
-    ']'
-  ];
-  final List<String> _homeRow = [
-    'a',
-    's',
-    'd',
-    'f',
-    'g',
-    'h',
-    'j',
-    'k',
-    'l',
-    ';',
-    "'",
-    '\\'
-  ];
-  final List<String> _bottomRow = [
-    'z',
-    'x',
-    'c',
-    'v',
-    'b',
-    'n',
-    'm',
-    ',',
-    '.',
-    '/',
-    '(',
-    ')'
-  ];
+  final List<String> _topRow = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '@', '#'];
+  final List<String> _qwertyRow = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']'];
+  final List<String> _homeRow = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', "'", '\\'];
+  final List<String> _bottomRow = ['z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', '(', ')'];
 
   bool isShiftActive = false;
   String activeKey = '';
@@ -87,8 +33,6 @@ class _CustomKeyboardState extends State<CustomKeyboard> {
   @override
   void initState() {
     super.initState();
-    debugPrint("init focus: ${widget.focusNode?.hasFocus}");
-    widget.focusNode!.requestFocus();
     isShiftActive = widget.isShiftActive;
   }
 
@@ -164,7 +108,7 @@ class _CustomKeyboardState extends State<CustomKeyboard> {
         height: 70,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: activeKey == label ? Colors.grey : Colors.grey,
+          color: activeKey == label ? Colors.blueGrey : Colors.grey,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Colors.black),
         ),
