@@ -1,3 +1,7 @@
+## 0.0.4
+
+- Added A callback to get the Autocomplete controller & focus Node,
+
 ## 0.0.3
 
 - Added default text to the autocomplete widget from the passed controller

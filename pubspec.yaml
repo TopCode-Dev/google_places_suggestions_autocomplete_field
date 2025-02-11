@@ -1,6 +1,6 @@
 name: google_places_suggestions_autocomplete_field
 description: "A Flutter package that provides a customizable autocomplete text field for location search using the Google Places API."
-version: 0.0.3
+version: 0.0.4
 homepage: https://github.com/TopCode-Dev/google_places_suggestions_autocomplete_field
 
 environment:
