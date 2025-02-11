@@ -165,9 +165,6 @@ class _GooglePlacesSuggestionsAutoCompleteFieldState
         setState(() {
           _networkError = false;
         });
-        debugPrint("controller string ${textEditingValue.text}");
-        debugPrint("widget controller string: ${widget.controller.text}");
-        debugPrint("text: ${textEditingValue}");
         final List<PlaceResponse>? options = await _debouncedSearch(textEditingValue.text);
         debugPrint("Options: ${options}");
         if (options == null) {
