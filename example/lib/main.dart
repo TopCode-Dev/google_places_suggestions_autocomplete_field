@@ -2,10 +2,19 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:google_places_suggestions_autocomplete_field/google_places_suggestions_autocomplete_field.dart';
+import 'package:provider/provider.dart';
+import 'core/services/navigation_service.dart';
 import 'keyboard_manager.dart';
+import 'keyboard_navigation_area.dart';
+import 'navigable_textfield.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => NavigationService(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -35,6 +44,34 @@ class _HomeScreenState extends State<HomeScreen> {
   TextEditingController _textController = TextEditingController();
   final KeyboardManager _keyboardManager = KeyboardManager();
 
+  Widget _buildNavigableAddressField() {
+    return SizedBox(
+      width: 400, // Fixed width
+      child: NavigableTextField(
+        id: 'address_textfield',
+        controller: _textController,
+        showVirtualKeyboard: true,
+        builder: (focusNode) {
+          return GooglePlacesSuggestionsAutoCompleteField(
+            controller: _textController,
+            focusNode: focusNode,
+            googleAPIKey: "AIzaSyA7UcyhKVRaoY5kQOduH1tEZAExChPfbXs",
+            countries: "za,de",
+            onPlaceSelected: (place) {
+              setState(() {
+                resultObject = jsonEncode(place.toJson());
+              });
+              debugPrint("place: ${jsonEncode(place.toJson())}");
+            },
+            onTapField: (controller, focusNode) {
+              _keyboardManager.focusTextField(controller, focusNode);
+            },
+          );
+        },
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -43,41 +80,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: () {
-        if (_keyboardManager.showVirtualKeyboard) {
-        }
-      },
+    return KeyboardNavigationArea(
       child: Scaffold(
-        body: Column(
-          children: [
-            Container(
-              margin: EdgeInsets.symmetric(vertical: 100, horizontal: 100),
-              height: 50,
-              width: 400,
-              child: GooglePlacesSuggestionsAutoCompleteField(
-                controller: _textController,
-                googleAPIKey: "xyz",/// Replace with your Google Places API Key
-                countries: "za,de", ///The countries for the predictions.
-                onPlaceSelected: (place) {
-                  setState(() {
-                    resultObject = jsonEncode(place.toJson());
-                  });
-                  debugPrint("place: ${jsonEncode(place.toJson())}");
-                },
-                /// Uncomment below onTap if you want to test with built in soft keyboard.
-              /* onTapField: (controller, focusNode) {
-                  _keyboardManager.focusTextField(controller, focusNode);
-                },*/
-
+        body: SingleChildScrollView( // Add this to prevent overflow
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 100),
+              Center(
+                child: _buildNavigableAddressField(),
               ),
-            ),
-            resultObject != null ? Container(
-                margin: EdgeInsets.symmetric(vertical: 100, horizontal: 100),
-                child: Text("Returned Location: $resultObject")
-            ) : Container(),
-          ],
+              if (resultObject != null)
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 20, horizontal: 100),
+                  child: Text(
+                    "Returned Location: $resultObject",
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
