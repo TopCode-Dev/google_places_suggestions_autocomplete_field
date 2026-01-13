@@ -1,64 +1,40 @@
 /// This library provides a Google Places Autocomplete TextField with suggestions.
-/// It supports searching locations and displaying suggestions based on Google Places API.
+/// It supports searching locations and displaying real-time address suggestions
+/// using the Google Places API. The widget includes debouncing, customizable
+/// suggestion UI, country and location-type filtering, and detailed place
+/// resolution upon selection.
 library google_places_suggestions_autocomplete_field;
 
 import 'dart:async';
-
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
-import 'models/location_piece.dart';
 import 'models/place.dart';
 import 'models/place_response.dart';
 import 'models/point.dart';
 import 'services/google_api.dart';
 
-const Duration fakeAPIDuration = Duration(seconds: 1);
 const Duration debounceDuration = Duration(milliseconds: 500);
 
-/// A StatefulWidget that provides an autocomplete text field
-/// with suggestions fetched from Google Places API.
-/// This widget supports location type-based filtering and country restrictions.
 class GooglePlacesSuggestionsAutoCompleteField extends StatefulWidget {
-  /// Controller for managing the text field input.
   final TextEditingController controller;
-
-  /// Hint text to be shown in the text field.
+  final FocusNode? focusNode;
   final String hint;
-
-  /// Optional decoration for the input field.
   final InputDecoration? decoration;
-
-  /// Background color for the suggestion list.
   final Color suggestionBackgroundColor;
-
-  /// Divider color used between suggestions.
   final Color suggestionDividerColor;
-
-  /// Text style for the suggestions.
   final TextStyle? suggestionTextStyle;
-
-  /// Google API Key used to fetch suggestions and details.
   final String googleAPIKey;
-
-  /// Callback function triggered when a place is selected from the suggestions.
   final Function(Place) onPlaceSelected;
-
-  /// Location type for filtering results (e.g., address, geocode).
   final String locationType;
-
-  /// A comma-separated list of country codes to restrict the search results.
   final String countries;
-
-  /// Allow injecting a custom keyboard if provided.
   final void Function(TextEditingController, FocusNode)? onTapField;
 
-  /// Constructor for GooglePlacesSuggestionsAutoCompleteField.
-  /// Takes required parameters for [controller], [googleAPIKey], and [onPlaceSelected].
   const GooglePlacesSuggestionsAutoCompleteField({
     super.key,
     required this.controller,
+    this.focusNode,
     this.hint = "Address",
     this.decoration,
     this.suggestionBackgroundColor = Colors.white,
@@ -72,304 +48,245 @@ class GooglePlacesSuggestionsAutoCompleteField extends StatefulWidget {
   });
 
   @override
-  _GooglePlacesSuggestionsAutoCompleteFieldState createState() =>
-      _GooglePlacesSuggestionsAutoCompleteFieldState();
+  GooglePlacesSuggestionsAutoCompleteFieldState createState() =>
+      GooglePlacesSuggestionsAutoCompleteFieldState();
 }
 
-class _GooglePlacesSuggestionsAutoCompleteFieldState
+/// Public state class for GooglePlacesSuggestionsAutoCompleteField
+class GooglePlacesSuggestionsAutoCompleteFieldState
     extends State<GooglePlacesSuggestionsAutoCompleteField> {
-
-  /// Holds the selected location from the suggestions.
-  Place? pickUpLocation;
-
-  /// Session token for managing Google API calls.
-  String? pickUpDateSessionToken;
-
-  /// Holds the final selected location.
-  Place? selectedLocation;
-
-  /// Google API handler for fetching place details and autocomplete suggestions.
+  late FocusNode _focusNode;
   late GoogleApi _googleApi;
 
+  String? pickUpDateSessionToken;
+  Place? pickUpLocation;
+  Place? selectedLocation;
 
-  // The query currently being searched for. If null, there is no pending
-  // request.
-  String? _currentQuery;
-
-  // The most recent options received from the API.
-  late List<PlaceResponse> _lastOptions = [];
-
-  late final _Debounceable<List<PlaceResponse>?, String> _debouncedSearch;
-  // A network error was received on the most recent query.
   bool _networkError = false;
+  bool _isSelectingPlace = false;
+  Timer? _debounceTimer;
+
+  final ValueNotifier<List<PlaceResponse>> _suggestions = ValueNotifier([]);
 
   @override
   void initState() {
     super.initState();
-    _debouncedSearch = _debounce<List<PlaceResponse>?, String>(_search);
+    _focusNode = widget.focusNode ?? FocusNode();
     _googleApi = GoogleApi(widget.googleAPIKey);
-    init();
+    pickUpDateSessionToken = const Uuid().v4();
+
+    widget.controller.addListener(_onControllerChanged);
   }
 
-  static String _displayStringForOption(PlaceResponse option) => option.description ?? "";
-
-  /// Builds the widget for the Google Places Autocomplete text field
-  /// and suggestion dropdown.
   @override
-  Widget build(BuildContext context) {
-    return Autocomplete<PlaceResponse>(
-      displayStringForOption: _displayStringForOption,
-      initialValue: widget.controller.value,
-      fieldViewBuilder: (BuildContext context,
-          TextEditingController controller,
-          FocusNode focusNode,
-          VoidCallback onFieldSubmitted) {
-        return TextFormField(
-          decoration: widget.decoration != null ? widget.decoration?.copyWith(
-              errorText: _networkError ? 'Network error, please try again.' : null,)
-          : InputDecoration(
-            hintText:  widget.hint,
-            labelText: widget.hint,
-            icon: Icon(
-              Icons.location_on,
-              color: Color(0xffcc2f25),
-            ),
-            contentPadding: EdgeInsets.symmetric(
-                horizontal: 16, vertical: 4),
-            border: OutlineInputBorder(
-              borderSide: BorderSide(
-                color: Colors.grey.withOpacity(0.7),
-                width: 2.0,
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderSide: BorderSide(
-                color: Colors.grey.withOpacity(0.7),
-                width: 2.0,
-              ),
-            ),
-          ),
-          controller: controller,
-          focusNode: focusNode,
-          onFieldSubmitted: (String value) {
-            onFieldSubmitted();
-          },
-          onTap: () {
-            if (widget.onTapField != null) {
-              widget.onTapField!(controller, focusNode);
-            }
-          },
-        );
-      },
-      optionsBuilder: (TextEditingValue textEditingValue) async {
-        setState(() {
-          _networkError = false;
-        });
-        final List<PlaceResponse>? options = await _debouncedSearch(textEditingValue.text);
-        debugPrint("Options: ${options}");
-        if (options == null) {
-          return _lastOptions;
-        }
-        _lastOptions = options;
-        return options;
-      },
-      onSelected: (PlaceResponse selection) {
-        onPickUpLocationSelectionChange(selection);
-        widget.controller.text = selection.description ?? "";
-        debugPrint('You just selected ${selection.description}');
-      },
-    );
+  void dispose() {
+    _debounceTimer?.cancel();
+    widget.controller.removeListener(_onControllerChanged);
+    if (widget.focusNode == null) _focusNode.dispose();
+    _suggestions.dispose();
+    super.dispose();
   }
 
-  /// Initializes the Google API session token and suggestion controller.
-  void init() {
-    pickUpDateSessionToken = Uuid().v4().toString();
-  }
+  void _onControllerChanged() {
+    if (_isSelectingPlace) return;
 
-  /// Handles the selection of a location and retrieves detailed place information.
-  /// Updates the state with the selected location.
-  void onPickUpLocationSelectionChange(PlaceResponse placeResponse) {
-    pickUpLocation = null;
-    setState(() {});
+    final text = widget.controller.text.trim();
+    _debounceTimer?.cancel();
 
-    _googleApi
-        .getPlaceDetails(
-      placeId: placeResponse.place_id,
-      sessionToken: pickUpDateSessionToken,
-    )
-        .then((placeDetails) {
-      if (placeDetails.result != null) {
-        // Create a Point object with latitude and longitude.
-        Point? point = Point(
-            placeDetails.result?.geometry?.location?.lng ?? -1,
-            placeDetails.result?.geometry?.location?.lat ?? -1);
-
-        // Update the selected location.
-        pickUpLocation = Place.newInstance(placeResponse.description, point.x, point.y);
-
-        // Generate a new session token for subsequent requests.
-        pickUpDateSessionToken = Uuid().v4().toString();
-
-        // Parse address components from the place details.
-        String? streetNumber = placeDetails.result?.address_components
-            ?.firstWhereOrNull((LocationPiece element) =>
-            element.types!.contains("street_number"))
-            ?.longName ??
-            "";
-        String? streetAddress = placeDetails.result?.address_components
-            ?.firstWhereOrNull((element) => element.types!.contains("route"))
-            ?.longName ??
-            "";
-        String? suburb = placeDetails.result?.address_components
-            ?.firstWhereOrNull((element) =>
-            element.types!.contains("sublocality_level_1"))
-            ?.longName ??
-            "";
-        String? city = placeDetails.result?.address_components
-            ?.firstWhereOrNull((element) => element.types!.contains("locality"))
-            ?.longName ?? "";
-        String? province = placeDetails.result?.address_components
-            ?.firstWhereOrNull((element) =>
-            element.types!.contains("administrative_area_level_1"))
-            ?.longName ??
-            "";
-        String? country = placeDetails.result?.address_components
-            ?.firstWhereOrNull((element) => element.types!.contains("country"))
-            ?.longName ??
-            "";
-        String? postalCode = placeDetails.result?.address_components
-            ?.firstWhereOrNull((element) => element.types!.contains("postal_code"))
-            ?.longName ??
-            "";
-
-        // Format the full address.
-        String? address = "${streetNumber.isNotEmpty ? "$streetNumber, " : ""}"
-            "${streetAddress.isNotEmpty ? "$streetAddress, " : ""}"
-            "${suburb.isNotEmpty ? "$suburb, " : ""}"
-            "${city.isNotEmpty ? "$city, " : ""}"
-            "${province.isNotEmpty ? "$province, " : ""}"
-            "${country.isNotEmpty ? "$country, " : ""}"
-            "${postalCode.isNotEmpty ? "$postalCode, " : ""}";
-
-        setState(() {
-          widget.controller.text = address;
-        });
-
-        // Update the selected location object and trigger the callback.
-        Place? selectedLocation = Place(
-          address: address,
-          code: int.tryParse(postalCode),
-          latitude: pickUpLocation?.latitude,
-          longitude: pickUpLocation?.longitude,
-          city: city,
-          province: province,
-          suburb: suburb,
-          country: country,
-          streetAddress: streetAddress,
-          streetNumber: streetNumber
-        );
-        setState(() {
-          this.selectedLocation = selectedLocation;
-          widget.onPlaceSelected(selectedLocation);
-        });
+    _debounceTimer = Timer(debounceDuration, () async {
+      if (text.length < 2) {
+        _suggestions.value = [];
+        return;
       }
-    }).catchError((error, trace) {
-      debugPrint(error.toString());
-      debugPrintStack(stackTrace: trace, label: "Google getPlaceDetails");
+
+      try {
+        final results = await _googleApi.getAutoCompletePlaces(
+          input: text,
+          sessionToken: pickUpDateSessionToken,
+          countries: widget.countries,
+          types: widget.locationType,
+        );
+        _suggestions.value = results ?? [];
+        _networkError = false;
+      } catch (_) {
+        _suggestions.value = [];
+        _networkError = true;
+      }
     });
   }
 
-  /// Updates the suggestion list by fetching predictions from Google Places API.
-  Future<List<PlaceResponse>?> _search(String query) async {
-    debugPrint("Query: ${query}");
-    _currentQuery = query;
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          controller: widget.controller,
+          focusNode: _focusNode,
+          decoration: widget.decoration?.copyWith(
+            errorText: _networkError ? 'Network error, please try again.' : null,
+          ) ?? InputDecoration(
+            hintText: widget.hint,
+            labelText: widget.hint,
+            icon: const Icon(Icons.location_on, color: Color(0xffcc2f25)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            border: OutlineInputBorder(
+              borderSide: BorderSide(color: Colors.grey.withOpacity(0.7), width: 2.0),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderSide: BorderSide(color: Colors.grey.withOpacity(0.7), width: 2.0),
+            ),
+          ),
+          onTap: () {
+            widget.onTapField?.call(widget.controller, _focusNode);
+            if (!_focusNode.hasFocus) {
+              FocusScope.of(context).requestFocus(_focusNode);
+            }
+          },
+        ),
+        ValueListenableBuilder<List<PlaceResponse>>(
+          valueListenable: _suggestions,
+          builder: (context, suggestions, _) {
+            if (suggestions.isEmpty) return const SizedBox.shrink();
 
-    late final List<PlaceResponse>? options;
+            final maxItemHeight = 48.0;
+            final separatorHeight = 1.0;
+            final totalHeight = (suggestions.length * maxItemHeight) +
+                ((suggestions.length - 1) * separatorHeight);
+            final maxAllowedHeight = MediaQuery.of(context).size.height * 0.4;
+
+            return ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.9,
+                maxHeight: totalHeight > maxAllowedHeight
+                    ? maxAllowedHeight
+                    : totalHeight,
+                minWidth: 400,
+              ),
+              child: Material(
+                elevation: 4,
+                borderRadius: BorderRadius.circular(4),
+                child: Container(
+                  color: widget.suggestionBackgroundColor,
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: EdgeInsets.zero,
+                    itemCount: suggestions.length,
+                    separatorBuilder: (_, __) => Divider(
+                      height: separatorHeight,
+                      thickness: separatorHeight,
+                      color: widget.suggestionDividerColor,
+                    ),
+                    itemBuilder: (context, index) {
+                      final option = suggestions[index];
+                      return ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          minHeight: 48,
+                          maxHeight: 48,
+                        ),
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          leading: const Icon(Icons.location_on,
+                              color: Color(0xffcc2f25), size: 20),
+                          title: Text(
+                            option.description ?? '',
+                            style: widget.suggestionTextStyle ??
+                                const TextStyle(fontSize: 14),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 2,
+                          ),
+                          onTap: () => _onSuggestionSelected(option),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Future<void> _onSuggestionSelected(PlaceResponse placeResponse) async {
+    _isSelectingPlace = true;
+    _suggestions.value = [];
+
     try {
-      options = await _googleApi
-          .getAutoCompletePlaces(
-        input: _currentQuery,
+      final placeDetails = await _googleApi.getPlaceDetails(
+        placeId: placeResponse.place_id,
         sessionToken: pickUpDateSessionToken,
-        countries: widget.countries,
-        types: widget.locationType,
       );
-    } catch (error) {
-      if (error is _NetworkException) {
-        setState(() {
-          _networkError = true;
-        });
-        return null;
-      }
-      rethrow;
+
+      if (placeDetails.result == null) return;
+
+      final point = Point(
+        placeDetails.result!.geometry!.location!.lng,
+        placeDetails.result!.geometry!.location!.lat,
+      );
+
+      pickUpLocation = Place.newInstance(
+        placeResponse.description ?? '',
+        point.x,
+        point.y,
+      );
+
+      pickUpDateSessionToken = const Uuid().v4();
+
+      String getComponent(String type) =>
+          placeDetails.result!.address_components
+              ?.firstWhereOrNull(
+                  (e) => e.types != null && e.types!.contains(type))
+              ?.longName ??
+              '';
+
+      final streetNumber = getComponent('street_number');
+      final streetAddress = getComponent('route');
+      final suburb = getComponent('sublocality_level_1');
+      final city = getComponent('locality');
+      final province = getComponent('administrative_area_level_1');
+      final country = getComponent('country');
+      final postalCode = getComponent('postal_code');
+
+      final address = [
+        streetNumber,
+        streetAddress,
+        suburb,
+        city,
+        province,
+        country,
+        postalCode,
+      ].where((e) => e.isNotEmpty).join(', ');
+
+      widget.controller.text = address;
+      widget.controller.selection =
+          TextSelection.collapsed(offset: address.length);
+
+      selectedLocation = Place(
+        address: address,
+        code: int.tryParse(postalCode),
+        latitude: pickUpLocation?.latitude,
+        longitude: pickUpLocation?.longitude,
+        city: city,
+        province: province,
+        suburb: suburb,
+        country: country,
+        streetAddress: streetAddress,
+        streetNumber: streetNumber,
+      );
+
+      widget.onPlaceSelected(selectedLocation!);
+      _focusNode.unfocus();
+    } catch (_) {
+      setState(() => _networkError = true);
+    } finally {
+      await Future.delayed(const Duration(milliseconds: 300));
+      _isSelectingPlace = false;
     }
-
-    // If another search happened after this one, throw away these options.
-    if (_currentQuery != query) {
-      return null;
-    }
-    _currentQuery = null;
-
-    return options;
   }
-
-}
-
-
-typedef _Debounceable<S, T> = Future<S?> Function(T parameter);
-
-/// Returns a new function that is a debounced version of the given function.
-///
-/// This means that the original function will be called only after no calls
-/// have been made for the given Duration.
-_Debounceable<S, T> _debounce<S, T>(_Debounceable<S?, T> function) {
-  _DebounceTimer? debounceTimer;
-
-  return (T parameter) async {
-    if (debounceTimer != null && !debounceTimer!.isCompleted) {
-      debounceTimer!.cancel();
-    }
-    debounceTimer = _DebounceTimer();
-    try {
-      await debounceTimer!.future;
-    } catch (error) {
-      if (error is _CancelException) {
-        return null;
-      }
-      rethrow;
-    }
-    return function(parameter);
-  };
-}
-
-// A wrapper around Timer used for debouncing.
-class _DebounceTimer {
-  _DebounceTimer() {
-    _timer = Timer(debounceDuration, _onComplete);
-  }
-
-  late final Timer _timer;
-  final Completer<void> _completer = Completer<void>();
-
-  void _onComplete() {
-    _completer.complete();
-  }
-
-  Future<void> get future => _completer.future;
-
-  bool get isCompleted => _completer.isCompleted;
-
-  void cancel() {
-    _timer.cancel();
-    _completer.completeError(const _CancelException());
-  }
-}
-
-// An exception indicating that the timer was canceled.
-class _CancelException implements Exception {
-  const _CancelException();
-}
-
-// An exception indicating that a network request has failed.
-class _NetworkException implements Exception {
-  const _NetworkException();
 }
