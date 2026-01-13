@@ -1,3 +1,8 @@
+## 0.0.5
+
+- Improved desktop and keyboard-navigation support
+- Minor internal refactoring and stability improvements
+
 ## 0.0.4
 
 - Added A callback to get the Autocomplete controller & focus Node,
