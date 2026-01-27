@@ -78,10 +78,7 @@ class GoogleApi {
         response.statusCode == 203 ||
         response.statusCode == 204) {
       return PlaceDetailsResult.fromJson(json.decode(response.body));
-    } else if (response.body != null) {
-      throw Exception(response.body);
-    } else {
-      throw Exception('${response.toString()}');
-    }
+    } else    throw Exception(response.body);
+
   }
 }
